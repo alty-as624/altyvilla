@@ -1,6 +1,18 @@
 export const metadata = {
-  title: "生活誌",
+  title: "蘇宅",
   description: "個人生活資訊 dashboard",
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
+const navLinkStyle = {
+  color: "#1c2b2a",
+  textDecoration: "none",
+  fontFamily: "'Noto Sans TC', sans-serif",
+  fontSize: 15,
 };
 
 export default function RootLayout({ children }) {
@@ -21,14 +33,13 @@ export default function RootLayout({ children }) {
             gap: 20,
             padding: "16px 20px",
             borderBottom: "2px solid #1c2b2a",
-            fontFamily: "monospace",
           }}
         >
-          <a href="/" style={{ color: "#1c2b2a", fontWeight: "bold" }}>生活誌</a>
-          <a href="/nagoya" style={{ color: "#1c2b2a" }}>名古屋</a>
-          <a href="/uk" style={{ color: "#1c2b2a" }}>英國</a>
+          <a href="/" style={{ ...navLinkStyle, fontWeight: "bold" }}>蘇宅</a>
+          <a href="/nagoya" style={navLinkStyle}>名古屋</a>
+          <a href="/uk" style={navLinkStyle}>英國</a>
         </nav>
-        <main style={{ padding: "20px", maxWidth: 720, margin: "0 auto" }}>
+        <main style={{ padding: "20px", maxWidth: 480, margin: "0 auto" }}>
           {children}
         </main>
       </body>
