@@ -7,8 +7,45 @@ const LON = 136.9066;
 
 // 愛知縣 JMA office code
 const AICHI_CODE = "230000";
+// 名古屋市
+const NAGOYA_CITY_CODE = "2310000";
 
 const OFFICIAL_STATUS = "https://www.kotsu.city.nagoya.jp/rp/emergency";
+const JMA_WARNING_PAGE =
+  "https://www.jma.go.jp/bosai/warning/#area_type=offices&area_code=230000";
+
+const WARN_CODE_NAME = {
+  "32": "暴風雪特別警報",
+  "33": "大雨特別警報",
+  "35": "暴風特別警報",
+  "36": "大雪特別警報",
+  "37": "波浪特別警報",
+  "38": "高潮特別警報",
+  "02": "暴風雪警報",
+  "03": "大雨警報",
+  "04": "洪水警報",
+  "05": "暴風警報",
+  "06": "大雪警報",
+  "07": "波浪警報",
+  "08": "高潮警報",
+  "10": "大雨注意報",
+  "12": "大雪注意報",
+  "13": "風雪注意報",
+  "14": "雷注意報",
+  "15": "強風注意報",
+  "16": "波浪注意報",
+  "17": "融雪注意報",
+  "18": "洪水注意報",
+  "19": "高潮注意報",
+  "20": "濃霧注意報",
+  "21": "乾燥注意報",
+  "22": "雪崩注意報",
+  "23": "低溫注意報",
+  "24": "霜注意報",
+  "25": "着氷注意報",
+  "26": "着雪注意報",
+  "27": "其他注意報",
+};
 
 function weatherCodeToText(code) {
   if (code === 0) return "晴";
@@ -29,10 +66,55 @@ function statusColor(level) {
   return "#9ca3af";
 }
 
+function warnPriority(code) {
+  const c = String(code);
+  if (["32", "33", "35", "36", "37", "38"].includes(c)) return 3;
+  if (["02", "03", "04", "05", "06", "07", "08"].includes(c)) return 2;
+  return 1;
+}
+
+function parseWarnings(data) {
+  const headline = (data.headlineText || "").trim();
+  const byCode = new Map();
+
+  (data.areaTypes || []).forEach((areaType) => {
+    (areaType.areas || []).forEach((area) => {
+      const areaCode = String(area.code || area.area?.code || "");
+      const inNagoya = areaCode === NAGOYA_CITY_CODE;
+      (area.warnings || []).forEach((w) => {
+        if (w.status !== "発表" && w.status !== "継続") return;
+        if (!w.code) return;
+        const code = String(w.code);
+        const prev = byCode.get(code);
+        const priority = warnPriority(code);
+        if (!prev) {
+          byCode.set(code, {
+            code,
+            name: WARN_CODE_NAME[code] || `警報代碼 ${code}`,
+            priority,
+            inNagoya,
+          });
+        } else if (inNagoya) {
+          prev.inNagoya = true;
+        }
+      });
+    });
+  });
+
+  let list = [...byCode.values()].filter((x) => x.inNagoya);
+  if (list.length === 0) {
+    list = [...byCode.values()].filter((x) => x.priority >= 2);
+  }
+  list.sort((a, b) => b.priority - a.priority || a.code.localeCompare(b.code));
+  return { headline, list };
+}
+
 export default function Nagoya() {
   const [nagoyaTime, setNagoyaTime] = useState(null);
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(false);
+
+  const [warningHeadline, setWarningHeadline] = useState("");
   const [warnings, setWarnings] = useState([]);
   const [warningError, setWarningError] = useState(false);
 
@@ -40,10 +122,8 @@ export default function Nagoya() {
   const [metroMeta, setMetroMeta] = useState("載入緊…");
   const [metroError, setMetroError] = useState(false);
 
-  // Clock: 每秒更新名古屋當地時間 (JST)
   useEffect(() => {
     const tick = () => {
-      const now = new Date();
       const jst = new Intl.DateTimeFormat("zh-Hant", {
         timeZone: "Asia/Tokyo",
         hour12: false,
@@ -53,7 +133,7 @@ export default function Nagoya() {
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
-      }).format(now);
+      }).format(new Date());
       setNagoyaTime(jst);
     };
     tick();
@@ -61,7 +141,6 @@ export default function Nagoya() {
     return () => clearInterval(id);
   }, []);
 
-  // 天氣：只喺 page load 嗰陣 check 一次
   useEffect(() => {
     fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,weather_code`
@@ -71,31 +150,17 @@ export default function Nagoya() {
       .catch(() => setWeatherError(true));
   }, []);
 
-  // 災害警報：同樣只喺 load 嗰陣 check 一次
   useEffect(() => {
     fetch(`https://www.jma.go.jp/bosai/warning/data/warning/${AICHI_CODE}.json`)
       .then((res) => res.json())
       .then((data) => {
-        const found = [];
-        (data.areaTypes || []).forEach((areaType) => {
-          (areaType.areas || []).forEach((area) => {
-            (area.warnings || []).forEach((w) => {
-              if (w.status === "発表" || w.status === "継続") {
-                found.push({
-                  areaName: area.area?.name || "",
-                  code: w.code,
-                  status: w.status,
-                });
-              }
-            });
-          });
-        });
-        setWarnings(found);
+        const { headline, list } = parseWarnings(data);
+        setWarningHeadline(headline);
+        setWarnings(list);
       })
       .catch(() => setWarningError(true));
   }, []);
 
-  // 地下鐵線況：打開 page 時 fetch 自己嘅 /api/status 一次
   const loadMetro = () => {
     setMetroError(false);
     setMetroMeta("正在 fetch 官方運行情報…");
@@ -125,18 +190,8 @@ export default function Nagoya() {
     loadMetro();
   }, []);
 
-  // X embed
-  useEffect(() => {
-    const s = document.createElement("script");
-    s.src = "https://platform.twitter.com/widgets.js";
-    s.async = true;
-    document.body.appendChild(s);
-    return () => {
-      try {
-        document.body.removeChild(s);
-      } catch (_) {}
-    };
-  }, []);
+  const hasAlert = warnings.some((w) => w.priority >= 2);
+  const hasSpecial = warnings.some((w) => w.priority >= 3);
 
   return (
     <div>
@@ -176,10 +231,10 @@ export default function Nagoya() {
         </div>
       </div>
 
-      {warnings.length > 0 && (
+      {(warningHeadline || warnings.length > 0) && (
         <div
           style={{
-            background: "#a45a3a",
+            background: hasAlert ? "#a45a3a" : "#8a7355",
             color: "#fff",
             borderRadius: 4,
             padding: "16px 18px",
@@ -187,13 +242,31 @@ export default function Nagoya() {
           }}
         >
           <div style={{ fontWeight: "bold", marginBottom: 8 }}>
-            ⚠ 愛知縣現正生效警報
+            {hasSpecial
+              ? "⚠ 特別警報（名古屋重點）"
+              : hasAlert
+                ? "⚠ 警報（名古屋重點）"
+                : "注意報（名古屋）"}
           </div>
-          {warnings.map((w, i) => (
-            <div key={i} style={{ fontSize: 13.5, marginBottom: 4 }}>
-              {w.areaName} — {w.code}({w.status})
+          {warningHeadline && (
+            <div style={{ fontSize: 13.5, marginBottom: 8, lineHeight: 1.45 }}>
+              {warningHeadline}
+            </div>
+          )}
+          {warnings.map((w) => (
+            <div key={w.code} style={{ fontSize: 13.5, marginBottom: 4 }}>
+              {w.name}
+              {w.priority >= 2 ? "（警報級）" : "（注意報）"}
             </div>
           ))}
+          <a
+            href={JMA_WARNING_PAGE}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#fff", fontSize: 12, opacity: 0.9 }}
+          >
+            氣象廳詳情 →
+          </a>
         </div>
       )}
       {warningError && (
@@ -201,8 +274,21 @@ export default function Nagoya() {
           警報資料暫時攞唔到
         </div>
       )}
+      {!warningError && !warningHeadline && warnings.length === 0 && (
+        <div
+          style={{
+            background: "#e2d9c5",
+            border: "1px solid rgba(28,43,42,0.18)",
+            borderRadius: 3,
+            padding: "12px 16px",
+            marginBottom: 16,
+            fontSize: 13.5,
+          }}
+        >
+          名古屋市而家未見需要顯示嘅警報／注意報
+        </div>
+      )}
 
-      {/* 地下鐵線況：色 pill + 圓點 + 狀態 */}
       <div
         style={{
           background: "#e2d9c5",
@@ -329,22 +415,47 @@ export default function Nagoya() {
           borderRadius: 3,
           padding: "14px 16px",
           marginBottom: 16,
+          fontSize: 13.5,
+          lineHeight: 1.5,
         }}
       >
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>
-          地下鐵/市巴士運行資訊（官方 X）
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>
+          其他官方入口
         </div>
-        <a
-          className="twitter-timeline"
-          data-height="400"
-          data-chrome="noheader nofooter noborders transparent"
-          href="https://twitter.com/nagoya_kotsu"
-        >
-          載入緊 @nagoya_kotsu 嘅最新資訊…
-        </a>
+        <div>
+          <a
+            href={OFFICIAL_STATUS}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#1c2b2a" }}
+          >
+            交通局運行情報
+          </a>
+          {" · "}
+          <a
+            href={JMA_WARNING_PAGE}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#1c2b2a" }}
+          >
+            氣象廳警報
+          </a>
+          {" · "}
+          <a
+            href="https://www.city.nagoya.jp/bousaiportal/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#1c2b2a" }}
+          >
+            名古屋市防災
+          </a>
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
+          官方 X（@nagoya_kotsu）以日文為主，已唔 embed；有需要可自行開啟。
+        </div>
       </div>
 
-      <p>呢度之後仲會加:名古屋 live cam</p>
+      <p style={{ fontSize: 13, opacity: 0.75 }}>之後可加：名古屋 live cam</p>
     </div>
   );
 }
