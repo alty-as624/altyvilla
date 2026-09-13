@@ -12,6 +12,23 @@ const JMA_WARNING_PAGE =
 const JR_SHINKANSEN_STATUS =
   "https://traininfo.jr-central.co.jp/shinkansen/pc/ja/index.html";
 const CSV_URL = "/data/shinkansen-ngy-kyo.csv";
+const STATION_BASE =
+  "https://www.kotsu.city.nagoya.jp/rp/subway/station_top.html?name=";
+
+const LINE_MARK = {
+  H: { ch: "東", color: "#f5c400", textDark: true },
+  M: { ch: "名", color: "#8f2e92", textDark: false },
+  T: { ch: "鶴", color: "#00a0e9", textDark: false },
+  S: { ch: "桜", color: "#d01667", textDark: false },
+  K: { ch: "上", color: "#e9529c", textDark: false },
+};
+
+const QUICK_STATIONS = [
+  { name: "亀島", lines: ["H"] },
+  { name: "名古屋", lines: ["H", "S"] },
+  { name: "栄", lines: ["H", "M"] },
+  { name: "金山", lines: ["M"] },
+];
 
 const WARN_CODE_NAME = {
   "32": "暴風雪特別警報",
@@ -108,7 +125,6 @@ function parseWarnings(data) {
   return { headline, list };
 }
 
-/** JST: weekday | saturday | holiday（日曜當 holiday；祝日未做完整表） */
 function jstDayType(now = new Date()) {
   const wd = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Tokyo",
@@ -131,6 +147,18 @@ function jstMinutesNow(now = new Date()) {
   return h * 60 + m;
 }
 
+/** 地下鉄 05:30–00:30 正常；其餘低視度 */
+function isMetroQuiet(now = new Date()) {
+  const m = jstMinutesNow(now);
+  const inService = m >= 5 * 60 + 30 || m < 30;
+  return !inService;
+}
+
+/** 新幹線 06:30–24:00 正常 */
+function isShinkansenQuiet(now = new Date()) {
+  return jstMinutesNow(now) < 6 * 60 + 30;
+}
+
 function parseHHMM(s) {
   const [h, m] = String(s).trim().split(":").map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return null;
@@ -142,8 +170,7 @@ function dayMatches(dayField, dayType) {
     .toLowerCase()
     .replace(/\s/g, "");
   if (!raw || raw === "all") return true;
-  const parts = raw.split("+").filter(Boolean);
-  return parts.includes(dayType);
+  return raw.split("+").filter(Boolean).includes(dayType);
 }
 
 function parseCsv(text) {
@@ -174,6 +201,14 @@ function nextTrains(rows, dir, limit = 5) {
     .slice(0, limit);
 }
 
+function quietStyle(quiet) {
+  return {
+    opacity: quiet ? 0.42 : 1,
+    filter: quiet ? "saturate(0.75)" : "none",
+    transition: "opacity 0.2s ease, filter 0.2s ease",
+  };
+}
+
 function RefreshIcon({ onClick, label }) {
   return (
     <button
@@ -197,8 +232,33 @@ function RefreshIcon({ onClick, label }) {
   );
 }
 
+function LineMark({ code }) {
+  const m = LINE_MARK[code];
+  if (!m) return null;
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 20,
+        height: 20,
+        borderRadius: 4,
+        fontSize: 12,
+        fontWeight: 800,
+        background: m.color,
+        color: m.textDark ? "#111" : "#fff",
+        flexShrink: 0,
+      }}
+    >
+      {m.ch}
+    </span>
+  );
+}
+
 export default function Nagoya() {
   const [nagoyaTime, setNagoyaTime] = useState(null);
+  const [now, setNow] = useState(() => new Date());
 
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(false);
@@ -217,24 +277,26 @@ export default function Nagoya() {
 
   useEffect(() => {
     const tick = () => {
-      const jst = new Intl.DateTimeFormat("zh-Hant", {
-        timeZone: "Asia/Tokyo",
-        hour12: false,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      }).format(new Date());
-      setNagoyaTime(jst);
+      const d = new Date();
+      setNow(d);
+      setNagoyaTime(
+        new Intl.DateTimeFormat("zh-Hant", {
+          timeZone: "Asia/Tokyo",
+          hour12: false,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }).format(d)
+      );
     };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
 
-  // 每分鐘刷新「最近五班」篩選
   useEffect(() => {
     const id = setInterval(() => setShinkansenTick((n) => n + 1), 60000);
     return () => clearInterval(id);
@@ -305,11 +367,11 @@ export default function Nagoya() {
 
   const hasAlert = warnings.some((w) => w.priority >= 2);
   const hasSpecial = warnings.some((w) => w.priority >= 3);
-
-  // shinkansenTick：每分鐘重算
   void shinkansenTick;
   const toKyo = nextTrains(csvRows, "ngy_kyo", 5);
   const toNgy = nextTrains(csvRows, "kyo_ngy", 5);
+  const metroQuiet = isMetroQuiet(now);
+  const shinkansenQuiet = isShinkansenQuiet(now);
 
   const card = {
     background: "#e2d9c5",
@@ -336,9 +398,9 @@ export default function Nagoya() {
                 gap: 10,
                 fontSize: 13.5,
                 padding: "4px 0",
-                borderTop: i === 0 ? "1px solid rgba(28,43,42,0.12)" : undefined,
+                borderTop:
+                  i === 0 ? "1px solid rgba(28,43,42,0.12)" : undefined,
                 borderBottom: "1px solid rgba(28,43,42,0.08)",
-                fontFamily: "monospace",
               }}
             >
               <span style={{ minWidth: 48 }}>{r.dep}</span>
@@ -374,7 +436,7 @@ export default function Nagoya() {
             gap: 8,
           }}
         >
-          <div style={{ fontFamily: "monospace", fontSize: 14, marginBottom: 10 }}>
+          <div style={{ fontSize: 14, marginBottom: 10 }}>
             名古屋現在時間:{nagoyaTime || "—"}
           </div>
           <RefreshIcon onClick={loadWeather} label="Refresh 天氣" />
@@ -395,6 +457,39 @@ export default function Nagoya() {
               )}
             </>
           )}
+        </div>
+      </div>
+
+      <div style={card}>
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>
+          常用站
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {QUICK_STATIONS.map((s) => (
+            <a
+              key={s.name}
+              href={STATION_BASE + encodeURIComponent(s.name)}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                textDecoration: "none",
+                color: "inherit",
+                fontSize: 14,
+              }}
+            >
+              <span style={{ fontWeight: 600, minWidth: 3.5 + "em" }}>
+                {s.name}
+              </span>
+              <span style={{ display: "flex", gap: 4 }}>
+                {s.lines.map((code) => (
+                  <LineMark key={code} code={code} />
+                ))}
+              </span>
+            </a>
+          ))}
         </div>
       </div>
 
@@ -447,7 +542,7 @@ export default function Nagoya() {
         </div>
       )}
 
-      <div style={card}>
+      <div style={{ ...card, ...quietStyle(metroQuiet) }}>
         <div
           style={{
             display: "flex",
@@ -463,7 +558,6 @@ export default function Nagoya() {
 
         <div
           style={{
-            fontFamily: "monospace",
             fontSize: 11,
             opacity: 0.75,
             marginBottom: 10,
@@ -530,7 +624,7 @@ export default function Nagoya() {
         )}
       </div>
 
-      <div style={card}>
+      <div style={{ ...card, ...quietStyle(shinkansenQuiet) }}>
         <div
           style={{
             display: "flex",
@@ -552,12 +646,12 @@ export default function Nagoya() {
             JR運行狀況
           </a>
         </div>
-        <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 10 }}>
-          來自自備時刻表 · 唔反映延誤 · day：平日／土曜／休日（日＝休日）
+        <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 10 }}>
+          班次表：2026/09/12
         </div>
         {csvError && (
           <div style={{ fontSize: 13, color: "#991b1b" }}>
-            讀唔到 {CSV_URL}，請確認已放喺 public/data/
+            讀唔到班次表，請確認 public/data/shinkansen-ngy-kyo.csv
           </div>
         )}
         {!csvError && (
