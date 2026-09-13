@@ -21,6 +21,12 @@ function congestionColor(level) {
   return "#c96a54";
 }
 
+function congestionBarWidth(level) {
+  if (level === "暢通") return "25%";
+  if (level === "頗塞") return "60%";
+  return "90%";
+}
+
 export default function UK() {
   const [now, setNow] = useState(null);
   const [weather, setWeather] = useState({ status: "loading" });
@@ -152,15 +158,36 @@ export default function UK() {
                 )}
               </div>
               {!r.error && (
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontFamily: "monospace",
-                    color: congestionColor(r.congestionLevel),
-                    fontWeight: 700,
-                  }}
-                >
-                  {r.congestionLevel}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div
+                    style={{
+                      width: 60,
+                      height: 6,
+                      background: "rgba(28,43,42,0.15)",
+                      borderRadius: 3,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: congestionBarWidth(r.congestionLevel),
+                        height: "100%",
+                        background: congestionColor(r.congestionLevel),
+                      }}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontFamily: "monospace",
+                      color: congestionColor(r.congestionLevel),
+                      fontWeight: 700,
+                      width: 46,
+                      textAlign: "right",
+                    }}
+                  >
+                    {r.congestionLevel}
+                  </div>
                 </div>
               )}
             </div>
