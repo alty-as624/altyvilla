@@ -1,18 +1,17 @@
 "use client";
 import { useEffect, useState } from "react";
 
-// 名古屋座標
 const LAT = 35.1815;
 const LON = 136.9066;
-
-// 愛知縣 JMA office code
 const AICHI_CODE = "230000";
-// 名古屋市
 const NAGOYA_CITY_CODE = "2310000";
 
 const OFFICIAL_STATUS = "https://www.kotsu.city.nagoya.jp/rp/emergency";
 const JMA_WARNING_PAGE =
   "https://www.jma.go.jp/bosai/warning/#area_type=offices&area_code=230000";
+const JR_SHINKANSEN_STATUS =
+  "https://traininfo.jr-central.co.jp/shinkansen/pc/ja/index.html";
+const CSV_URL = "/data/shinkansen-ngy-kyo.csv";
 
 const WARN_CODE_NAME = {
   "32": "暴風雪特別警報",
@@ -109,8 +108,98 @@ function parseWarnings(data) {
   return { headline, list };
 }
 
+/** JST: weekday | saturday | holiday（日曜當 holiday；祝日未做完整表） */
+function jstDayType(now = new Date()) {
+  const wd = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    weekday: "short",
+  }).format(now);
+  if (wd === "Sat") return "saturday";
+  if (wd === "Sun") return "holiday";
+  return "weekday";
+}
+
+function jstMinutesNow(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Tokyo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const h = Number(parts.find((p) => p.type === "hour")?.value || 0);
+  const m = Number(parts.find((p) => p.type === "minute")?.value || 0);
+  return h * 60 + m;
+}
+
+function parseHHMM(s) {
+  const [h, m] = String(s).trim().split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function dayMatches(dayField, dayType) {
+  const raw = String(dayField || "")
+    .toLowerCase()
+    .replace(/\s/g, "");
+  if (!raw || raw === "all") return true;
+  const parts = raw.split("+").filter(Boolean);
+  return parts.includes(dayType);
+}
+
+function parseCsv(text) {
+  const lines = text
+    .replace(/^\uFEFF/, "")
+    .trim()
+    .split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map((h) => h.trim());
+  return lines.slice(1).map((line) => {
+    const cols = line.split(",");
+    const row = {};
+    headers.forEach((h, i) => {
+      row[h] = (cols[i] || "").trim();
+    });
+    return row;
+  });
+}
+
+function nextTrains(rows, dir, limit = 5) {
+  const dayType = jstDayType();
+  const nowMin = jstMinutesNow();
+  return rows
+    .filter((r) => r.dir === dir && dayMatches(r.day, dayType))
+    .map((r) => ({ ...r, depMin: parseHHMM(r.dep) }))
+    .filter((r) => r.depMin != null && r.depMin >= nowMin)
+    .sort((a, b) => a.depMin - b.depMin)
+    .slice(0, limit);
+}
+
+function RefreshIcon({ onClick, label }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label || "Refresh"}
+      title={label || "Refresh"}
+      style={{
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        padding: 4,
+        lineHeight: 1,
+        fontSize: 18,
+        color: "inherit",
+        fontFamily: "inherit",
+      }}
+    >
+      ↻
+    </button>
+  );
+}
+
 export default function Nagoya() {
   const [nagoyaTime, setNagoyaTime] = useState(null);
+
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(false);
 
@@ -121,6 +210,10 @@ export default function Nagoya() {
   const [lines, setLines] = useState([]);
   const [metroMeta, setMetroMeta] = useState("載入緊…");
   const [metroError, setMetroError] = useState(false);
+
+  const [csvRows, setCsvRows] = useState([]);
+  const [csvError, setCsvError] = useState(false);
+  const [shinkansenTick, setShinkansenTick] = useState(0);
 
   useEffect(() => {
     const tick = () => {
@@ -141,13 +234,25 @@ export default function Nagoya() {
     return () => clearInterval(id);
   }, []);
 
+  // 每分鐘刷新「最近五班」篩選
   useEffect(() => {
+    const id = setInterval(() => setShinkansenTick((n) => n + 1), 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  const loadWeather = () => {
+    setWeatherError(false);
+    setWeather(null);
     fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,weather_code`
+      `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,apparent_temperature,weather_code,precipitation_probability`
     )
       .then((res) => res.json())
       .then((data) => setWeather(data.current))
       .catch(() => setWeatherError(true));
+  };
+
+  useEffect(() => {
+    loadWeather();
   }, []);
 
   useEffect(() => {
@@ -163,7 +268,7 @@ export default function Nagoya() {
 
   const loadMetro = () => {
     setMetroError(false);
-    setMetroMeta("正在 fetch 官方運行情報…");
+    setMetroMeta("載入緊…");
     fetch("/api/status", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
@@ -175,13 +280,11 @@ export default function Nagoya() {
               hour12: false,
             })
           : "";
-        setMetroMeta(
-          `已更新 · 解析 ${data.parsedCount ?? "—"} 項 · ${t}（JST）· 非官方 API`
-        );
+        setMetroMeta(`Last update : ${t}`);
       })
       .catch(() => {
         setMetroError(true);
-        setMetroMeta("Fetch 失敗，請開官方頁確認");
+        setMetroMeta("Last update : —（失敗）");
         setLines([]);
       });
   };
@@ -190,8 +293,65 @@ export default function Nagoya() {
     loadMetro();
   }, []);
 
+  useEffect(() => {
+    fetch(CSV_URL, { cache: "no-store" })
+      .then((res) => {
+        if (!res.ok) throw new Error("csv missing");
+        return res.text();
+      })
+      .then((text) => setCsvRows(parseCsv(text)))
+      .catch(() => setCsvError(true));
+  }, []);
+
   const hasAlert = warnings.some((w) => w.priority >= 2);
   const hasSpecial = warnings.some((w) => w.priority >= 3);
+
+  // shinkansenTick：每分鐘重算
+  void shinkansenTick;
+  const toKyo = nextTrains(csvRows, "ngy_kyo", 5);
+  const toNgy = nextTrains(csvRows, "kyo_ngy", 5);
+
+  const card = {
+    background: "#e2d9c5",
+    border: "1px solid rgba(28,43,42,0.18)",
+    borderRadius: 3,
+    padding: "14px 16px",
+    marginBottom: 16,
+  };
+
+  function TrainList({ title, rows }) {
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>
+          {title}
+        </div>
+        {rows.length === 0 ? (
+          <div style={{ fontSize: 13, opacity: 0.7 }}>今日已無班次（或表未涵蓋）</div>
+        ) : (
+          rows.map((r, i) => (
+            <div
+              key={`${r.dep}-${r.train}-${i}`}
+              style={{
+                display: "flex",
+                gap: 10,
+                fontSize: 13.5,
+                padding: "4px 0",
+                borderTop: i === 0 ? "1px solid rgba(28,43,42,0.12)" : undefined,
+                borderBottom: "1px solid rgba(28,43,42,0.08)",
+                fontFamily: "monospace",
+              }}
+            >
+              <span style={{ minWidth: 48 }}>{r.dep}</span>
+              <span style={{ opacity: 0.7 }}>→</span>
+              <span style={{ minWidth: 48 }}>{r.arr}</span>
+              <span>{r.train}</span>
+              <span style={{ marginLeft: "auto", opacity: 0.75 }}>{r.dest}</span>
+            </div>
+          ))
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -206,28 +366,35 @@ export default function Nagoya() {
           marginBottom: 16,
         }}
       >
-        <div style={{ fontFamily: "monospace", fontSize: 14, marginBottom: 10 }}>
-          名古屋現在時間:{nagoyaTime || "—"}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 8,
+          }}
+        >
+          <div style={{ fontFamily: "monospace", fontSize: 14, marginBottom: 10 }}>
+            名古屋現在時間:{nagoyaTime || "—"}
+          </div>
+          <RefreshIcon onClick={loadWeather} label="Refresh 天氣" />
         </div>
         <div style={{ fontSize: 14 }}>
           {weatherError && "天氣資料暫時攞唔到"}
           {!weatherError && !weather && "天氣載入緊…"}
           {weather && (
             <>
-              {weather.temperature_2m}°C ·{" "}
+              {weather.temperature_2m}°C
+              {weather.apparent_temperature != null && (
+                <> · 體感 {weather.apparent_temperature}°C</>
+              )}
+              {" · "}
               {weatherCodeToText(weather.weather_code)}
+              {weather.precipitation_probability != null && (
+                <> · 降水 {weather.precipitation_probability}%</>
+              )}
             </>
           )}
-        </div>
-        <div
-          style={{
-            fontFamily: "monospace",
-            fontSize: 11,
-            opacity: 0.6,
-            marginTop: 6,
-          }}
-        >
-          天氣只喺打開頁面嗰刻 check 一次，想要新資料請重新整理
         </div>
       </div>
 
@@ -275,68 +442,23 @@ export default function Nagoya() {
         </div>
       )}
       {!warningError && !warningHeadline && warnings.length === 0 && (
-        <div
-          style={{
-            background: "#e2d9c5",
-            border: "1px solid rgba(28,43,42,0.18)",
-            borderRadius: 3,
-            padding: "12px 16px",
-            marginBottom: 16,
-            fontSize: 13.5,
-          }}
-        >
+        <div style={{ ...card, fontSize: 13.5 }}>
           名古屋市而家未見需要顯示嘅警報／注意報
         </div>
       )}
 
-      <div
-        style={{
-          background: "#e2d9c5",
-          border: "1px solid rgba(28,43,42,0.18)",
-          borderRadius: 3,
-          padding: "14px 16px",
-          marginBottom: 16,
-        }}
-      >
+      <div style={card}>
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
             gap: 8,
-            flexWrap: "wrap",
-            marginBottom: 10,
+            marginBottom: 8,
           }}
         >
-          <div style={{ fontWeight: 600, fontSize: 14 }}>地下鐵運行狀況</div>
-          <div style={{ fontSize: 12 }}>
-            <button
-              type="button"
-              onClick={loadMetro}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#1c2b2a",
-                fontWeight: 600,
-                cursor: "pointer",
-                textDecoration: "underline",
-                padding: 0,
-                fontFamily: "inherit",
-                fontSize: 12,
-              }}
-            >
-              重新 fetch
-            </button>
-            {" · "}
-            <a
-              href={OFFICIAL_STATUS}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "#1c2b2a", fontWeight: 600 }}
-            >
-              官方頁
-            </a>
-          </div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>地下鉄運行狀況</div>
+          <RefreshIcon onClick={loadMetro} label="Refresh 地下鉄" />
         </div>
 
         <div
@@ -354,7 +476,7 @@ export default function Nagoya() {
         {(lines || []).map((l) => (
           <a
             key={l.key}
-            href={`${OFFICIAL_STATUS}#${l.hash || ""}`}
+            href={OFFICIAL_STATUS}
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -408,17 +530,45 @@ export default function Nagoya() {
         )}
       </div>
 
-      <div
-        style={{
-          background: "#e2d9c5",
-          border: "1px solid rgba(28,43,42,0.18)",
-          borderRadius: 3,
-          padding: "14px 16px",
-          marginBottom: 16,
-          fontSize: 13.5,
-          lineHeight: 1.5,
-        }}
-      >
+      <div style={card}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ fontWeight: 600, fontSize: 14 }}>
+            新幹線（名古屋 ↔ 京都）· 最近五班
+          </div>
+          <a
+            href={JR_SHINKANSEN_STATUS}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 12, color: "#1c2b2a", fontWeight: 600 }}
+          >
+            JR運行狀況
+          </a>
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 10 }}>
+          來自自備時刻表 · 唔反映延誤 · day：平日／土曜／休日（日＝休日）
+        </div>
+        {csvError && (
+          <div style={{ fontSize: 13, color: "#991b1b" }}>
+            讀唔到 {CSV_URL}，請確認已放喺 public/data/
+          </div>
+        )}
+        {!csvError && (
+          <>
+            <TrainList title="名古屋 → 京都" rows={toKyo} />
+            <TrainList title="京都 → 名古屋" rows={toNgy} />
+          </>
+        )}
+      </div>
+
+      <div style={{ ...card, fontSize: 13.5, lineHeight: 1.5 }}>
         <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>
           其他官方入口
         </div>
@@ -449,13 +599,17 @@ export default function Nagoya() {
           >
             名古屋市防災
           </a>
-        </div>
-        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
-          官方 X（@nagoya_kotsu）以日文為主，已唔 embed；有需要可自行開啟。
+          {" · "}
+          <a
+            href="https://twitter.com/nagoya_kotsu"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#1c2b2a" }}
+          >
+            @nagoya_kotsu
+          </a>
         </div>
       </div>
-
-      <p style={{ fontSize: 13, opacity: 0.75 }}>之後可加：名古屋 live cam</p>
     </div>
   );
 }
