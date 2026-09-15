@@ -42,7 +42,7 @@ async function fetchRoute(route, apiKey) {
   const coords = `${route.from.lat},${route.from.lon}:${route.to.lat},${route.to.lon}`;
   const url = `https://api.tomtom.com/routing/1/calculateRoute/${coords}/json?key=${apiKey}&traffic=true&travelMode=car`;
 
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: "no-store" });
   const data = await res.json();
 
   const summary = data.routes?.[0]?.summary;
@@ -64,6 +64,8 @@ async function fetchRoute(route, apiKey) {
     delayPct: congestion.ratioPct,
   };
 }
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const apiKey = process.env.TOMTOM_API_KEY;
