@@ -1,33 +1,53 @@
 // app/api/man_traffic/route.js
 // 攞你幾條 route 嘅實時交通狀況（用 TomTom Routing API，免卡免費額度 2500/日）
-// 記得喺 .env.local 加：TOMTOM_API_KEY=你嘅key
+// 記得喺 .env.local / Vercel Environment Variables 加：TOMTOM_API_KEY=你嘅key
+//
+// 每條 route 用返實際揸嘅 waypoint 順序去逼 TomTom 跟住條真實路徑計，
+// 唔會俾佢自己揀第二條「佢認為快」嘅路。
 
-const POINTS = {
-  m56_j4: { lat: 53.38164066504371, lon: -2.278147464508875 },
-  greenheys_lane: { lat: 53.46245423208374, lon: -2.2449288097859017 },
-  m60_j24_denton: { lat: 53.45689775933654, lon: -2.1361685906821593 },
-  a560_woodlands_parkway: { lat: 53.3912390085148, lon: -2.3412540631629435 },
-};
+const ORIGIN = { lat: 53.38488544600108, lon: -2.3403599038960023 }; // 出發點（屋企）
+
+const ROUTE_A_POINTS = [
+  ORIGIN,
+  { lat: 53.380997501697195, lon: -2.329407156562963 }, // Grove Lane 1
+  { lat: 53.38105712696837, lon: -2.3136742752236383 }, // Grove Lane 2
+  { lat: 53.38197474984305, lon: -2.301721483122266 }, // WhiteCarr Lane
+  { lat: 53.38206256687036, lon: -2.2895990348048074 }, // Newall Road
+  { lat: 53.38376069418351, lon: -2.285804327940385 }, // Tuffley Road
+  { lat: 53.3848547338893, lon: -2.27645291332257 }, // M56 J4
+  { lat: 53.41024950540678, lon: -2.2668377470776044 }, // Princess Parkway
+  { lat: 53.462443535970536, lon: -2.243051446578082 }, // Greenheys Lane
+  { lat: 53.46399033792069, lon: -2.2381045601744134 }, // Burlington Street
+  { lat: 53.4630882923527, lon: -2.2352523880398976 }, // Devas Street（終點）
+];
+
+const ROUTE_B1_POINTS = [
+  ORIGIN,
+  { lat: 53.380997501697195, lon: -2.329407156562963 }, // Grove Lane 1
+  { lat: 53.38105712696837, lon: -2.3136742752236383 }, // Grove Lane 2
+  { lat: 53.38197474984305, lon: -2.301721483122266 }, // WhiteCarr Lane
+  { lat: 53.38206256687036, lon: -2.2895990348048074 }, // Newall Road
+  { lat: 53.38376069418351, lon: -2.285804327940385 }, // Tuffley Road
+  { lat: 53.3848547338893, lon: -2.27645291332257 }, // M56 J4
+  { lat: 53.39862923645316, lon: -2.229245926586292 }, // M60(ACW)
+  { lat: 53.456877553343844, lon: -2.1344994287647565 }, // M60 J24
+  { lat: 53.45701712817726, lon: -2.1141655283175926 }, // Denton Pharmacy（終點）
+];
+
+const ROUTE_B2_POINTS = [
+  ORIGIN,
+  { lat: 53.391284170352186, lon: -2.341142420931091 }, // A560/Woodlands Parkway
+  { lat: 53.40094252096786, lon: -2.2995420642369706 }, // Baguley
+  { lat: 53.40094252096786, lon: -2.2995420642369706 }, // M56(E) J2
+  { lat: 53.39862923645316, lon: -2.229245926586292 }, // M60(ACW)
+  { lat: 53.456877553343844, lon: -2.1344994287647565 }, // M60 J24
+  { lat: 53.45701712817726, lon: -2.1141655283175926 }, // Denton Pharmacy（終點）
+];
 
 const ROUTES = [
-  {
-    id: "A",
-    label: "路線 A · M56 → A5103 → Greenheys Lane",
-    from: POINTS.m56_j4,
-    to: POINTS.greenheys_lane,
-  },
-  {
-    id: "B1",
-    label: "路線 B1 · M56 J4 → M56(E) → M60 J24",
-    from: POINTS.m56_j4,
-    to: POINTS.m60_j24_denton,
-  },
-  {
-    id: "B2",
-    label: "路線 B2 · A560/Woodlands Parkway → M60 J24",
-    from: POINTS.a560_woodlands_parkway,
-    to: POINTS.m60_j24_denton,
-  },
+  { id: "A", label: "路線 A · M56 → Devas St.", points: ROUTE_A_POINTS },
+  { id: "B1", label: "路線 B1 · M56 → Denton", points: ROUTE_B1_POINTS },
+  { id: "B2", label: "路線 B2 · A560 → Denton", points: ROUTE_B2_POINTS },
 ];
 
 // 用正常行車時間 vs 加咗實時交通嘅時間，計返個「塞車程度」
@@ -39,7 +59,7 @@ function classifyCongestion(normalSeconds, trafficSeconds) {
 }
 
 async function fetchRoute(route, apiKey) {
-  const coords = `${route.from.lat},${route.from.lon}:${route.to.lat},${route.to.lon}`;
+  const coords = route.points.map((p) => `${p.lat},${p.lon}`).join(":");
   const url = `https://api.tomtom.com/routing/1/calculateRoute/${coords}/json?key=${apiKey}&traffic=true&travelMode=car`;
 
   const res = await fetch(url, { cache: "no-store" });
