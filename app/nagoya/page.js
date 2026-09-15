@@ -9,6 +9,7 @@ const NAGOYA_CITY_CODE = "2310000";
 const OFFICIAL_STATUS = "https://www.kotsu.city.nagoya.jp/rp/emergency";
 const JMA_WARNING_PAGE =
   "https://www.jma.go.jp/bosai/warning/#area_type=offices&area_code=230000";
+const JMA_WARNING_JSON = `https://www.jma.go.jp/bosai/warning/data/r8/${AICHI_CODE}.json`;
 const JR_SHINKANSEN_STATUS =
   "https://traininfo.jr-central.co.jp/shinkansen/pc/ja/index.html";
 const CSV_URL = "/data/shinkansen-ngy-kyo.csv";
@@ -89,39 +90,47 @@ function warnPriority(code) {
   return 1;
 }
 
+/** 新 API：/bosai/warning/data/r8/{code}.json（array，最新在前） */
 function parseWarnings(data) {
-  const headline = (data.headlineText || "").trim();
+  const reports = Array.isArray(data) ? data : data ? [data] : [];
+  const latest = reports[0] || {};
+  let headline = (latest.headlineText || "").trim();
   const byCode = new Map();
 
-  (data.areaTypes || []).forEach((areaType) => {
-    (areaType.areas || []).forEach((area) => {
-      const areaCode = String(area.code || area.area?.code || "");
-      const inNagoya = areaCode === NAGOYA_CITY_CODE;
-      (area.warnings || []).forEach((w) => {
-        if (w.status !== "発表" && w.status !== "継続") return;
-        if (!w.code) return;
-        const code = String(w.code);
-        const prev = byCode.get(code);
-        const priority = warnPriority(code);
-        if (!prev) {
-          byCode.set(code, {
-            code,
-            name: WARN_CODE_NAME[code] || `警報代碼 ${code}`,
-            priority,
-            inNagoya,
-          });
-        } else if (inNagoya) {
-          prev.inNagoya = true;
-        }
-      });
-    });
-  });
+  const class20 = latest.warning?.class20Items || [];
+  for (const area of class20) {
+    const areaCode = String(area.areaCode || "");
+    const inNagoya = areaCode === NAGOYA_CITY_CODE;
+    for (const k of area.kinds || []) {
+      if (k.status !== "発表" && k.status !== "継続") continue;
+      if (!k.code) continue;
+      const code = String(k.code);
+      const prev = byCode.get(code);
+      const priority = warnPriority(code);
+      if (!prev) {
+        byCode.set(code, {
+          code,
+          name: WARN_CODE_NAME[code] || `警報代碼 ${code}`,
+          priority,
+          inNagoya,
+        });
+      } else if (inNagoya) {
+        prev.inNagoya = true;
+      }
+    }
+  }
 
   let list = [...byCode.values()].filter((x) => x.inNagoya);
   if (list.length === 0) {
     list = [...byCode.values()].filter((x) => x.priority >= 2);
   }
   list.sort((a, b) => b.priority - a.priority || a.code.localeCompare(b.code));
+
+  // 全部已解除時唔用「解除」headline 嚇自己
+  if (list.length === 0) {
+    headline = "";
+  }
+
   return { headline, list };
 }
 
@@ -322,7 +331,7 @@ export default function Nagoya() {
   }, []);
 
   useEffect(() => {
-    fetch(`https://www.jma.go.jp/bosai/warning/data/warning/${AICHI_CODE}.json`)
+    fetch(JMA_WARNING_JSON, { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
         const { headline, list } = parseWarnings(data);
@@ -626,7 +635,17 @@ export default function Nagoya() {
                   boxSizing: "border-box",
                 }}
               >
-                <span style={{ fontWeight: 600 }}>{s.name}</span>
+                <span
+                  style={{
+                    fontWeight: 600,
+                    display: "inline-block",
+                    width: "3em",
+                    minWidth: "3em",
+                    flexShrink: 0,
+                  }}
+                >
+                  {s.name}
+                </span>
                 <span style={{ display: "flex", gap: 3 }}>
                   {s.lines.map((code) => (
                     <LineMark key={code} code={code} />
