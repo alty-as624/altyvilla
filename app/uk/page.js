@@ -31,6 +31,7 @@ export default function UK() {
   const [now, setNow] = useState(null);
   const [weather, setWeather] = useState({ status: "loading" });
   const [traffic, setTraffic] = useState({ status: "loading" });
+  const [bus, setBus] = useState({ status: "loading" });
 
   useEffect(() => {
     const tick = () => setNow(new Date());
@@ -69,6 +70,21 @@ export default function UK() {
         else setTraffic({ status: "ok", routes: data.routes });
       })
       .catch(() => setTraffic({ status: "error", message: "攞路況資料失敗" }));
+  }, []);
+
+  // 巴士站顯示屏：fetch 自己個 API route，每 60 秒自動refresh
+  const fetchBus = () => {
+    setBus((prev) => ({ ...prev, status: prev.status === "ok" ? "refreshing" : "loading" }));
+    fetch("/api/man_bus")
+      .then((res) => res.json())
+      .then((data) => setBus({ status: "ok", ...data }))
+      .catch(() => setBus({ status: "error", message: "攞巴士資料失敗" }));
+  };
+
+  useEffect(() => {
+    fetchBus();
+    const id = setInterval(fetchBus, 60 * 1000);
+    return () => clearInterval(id);
   }, []);
 
   const w = weather.status === "ok" ? describeWeather(weather.current?.weather_code) : null;
@@ -194,8 +210,178 @@ export default function UK() {
           ))}
       </div>
 
+      {/* Metrolink 月台顯示屏 */}
+      <div
+        style={{
+          border: "1.5px solid #1c2b2a",
+          borderRadius: 4,
+          padding: "14px 18px",
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 10, fontSize: 14 }}>
+          Metrolink
+          <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.5, marginLeft: 8 }}>
+            示意畫面，未接駁真實data
+          </span>
+        </div>
+
+        <div style={{ display: "grid", gap: 10 }}>
+          {[
+            { title: "Altrincham → 市中心", trams: [
+              { dest: "Bury", wait: "3" },
+              { dest: "Piccadilly", wait: "9" },
+              { dest: "Bury", wait: "17" },
+            ] },
+            { title: "St Peter's Square → Altrincham", trams: [
+              { dest: "Altrincham", wait: "2" },
+              { dest: "Altrincham", wait: "14" },
+              { dest: "Altrincham", wait: "26" },
+            ] },
+          ].map((board) => (
+            <div
+              key={board.title}
+              style={{
+                background: "#0d1210",
+                borderRadius: 3,
+                padding: "10px 14px",
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: "monospace",
+                  fontSize: 11,
+                  color: "#7fb8a4",
+                  marginBottom: 6,
+                  letterSpacing: 0.5,
+                }}
+              >
+                {board.title}
+              </div>
+              {board.trams.map((t, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontFamily: "monospace",
+                    color: "#e8b84b",
+                    fontSize: 15,
+                    padding: "2px 0",
+                  }}
+                >
+                  <span>{t.dest}</span>
+                  <span>{t.wait} 分鐘</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 巴士站顯示屏 */}
+      <div
+        style={{
+          border: "1.5px solid #1c2b2a",
+          borderRadius: 4,
+          padding: "14px 18px",
+          marginBottom: 16,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 14 }}>
+            巴士
+            {bus.stopName && (
+              <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.6, marginLeft: 8 }}>
+                {bus.stopName}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={fetchBus}
+            style={{
+              fontSize: 11,
+              fontFamily: "monospace",
+              color: "#1c2b2a",
+              background: "transparent",
+              border: "1px solid #1c2b2a",
+              borderRadius: 3,
+              padding: "3px 8px",
+              cursor: "pointer",
+            }}
+          >
+            {bus.status === "refreshing" ? "更新緊..." : "重新整理"}
+          </button>
+        </div>
+
+        <div style={{ background: "#0d1210", borderRadius: 3, padding: "10px 14px" }}>
+          {(bus.status === "loading") && (
+            <div style={{ fontFamily: "monospace", fontSize: 13, color: "#7fb8a4" }}>
+              讀緊班次...
+            </div>
+          )}
+          {bus.status === "error" && (
+            <div style={{ fontFamily: "monospace", fontSize: 13, color: "#c96a54" }}>
+              {bus.message}
+            </div>
+          )}
+          {(bus.status === "ok" || bus.status === "refreshing") && bus.closed && (
+            <div style={{ fontFamily: "monospace", fontSize: 14, color: "#e8b84b" }}>
+              {bus.message}
+            </div>
+          )}
+          {(bus.status === "ok" || bus.status === "refreshing") &&
+            !bus.closed &&
+            bus.buses?.map((b, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  fontFamily: "monospace",
+                  fontSize: 15,
+                  padding: "3px 0",
+                }}
+              >
+                <span style={{ color: "#e8b84b" }}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      minWidth: 28,
+                      color: "#eee7d8",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {b.line}
+                  </span>{" "}
+                  {b.destination}
+                </span>
+                <span style={{ color: "#e8b84b" }}>
+                  {b.waitMinutes} 分鐘
+                  {!b.isRealtime && (
+                    <span style={{ fontSize: 10, color: "#7fb8a4", marginLeft: 5 }}>預定</span>
+                  )}
+                </span>
+              </div>
+            ))}
+          {bus.updatedAt && (
+            <div style={{ fontSize: 10, color: "#7fb8a4", fontFamily: "monospace", marginTop: 8 }}>
+              更新於 {new Date(bus.updatedAt).toLocaleTimeString("zh-Hant-HK", { hour12: false })}
+            </div>
+          )}
+        </div>
+      </div>
+
       <p style={{ fontFamily: "monospace", fontSize: 13, opacity: 0.6 }}>
-        之後會陸續加:Metrolink / 油價 / 天氣警告 / 返工提示
+        之後會陸續加:油價 / 天氣警告 / 返工提示
       </p>
     </div>
   );
