@@ -35,6 +35,7 @@ export default function UK() {
   const [now, setNow] = useState(null);
   const [weather, setWeather] = useState({ status: "loading" });
   const [traffic, setTraffic] = useState({ status: "loading" });
+  const [metrolink, setMetrolink] = useState({ status: "loading" });
   const [bus, setBus] = useState({ status: "loading" });
 
   useEffect(() => {
@@ -74,6 +75,21 @@ export default function UK() {
         else setTraffic({ status: "ok", routes: data.routes });
       })
       .catch(() => setTraffic({ status: "error", message: "攞路況資料失敗" }));
+  }, []);
+
+  // Metrolink：fetch 自己個 API route，每 60 秒自動refresh
+  const fetchMetrolink = () => {
+    setMetrolink((prev) => ({ ...prev, status: prev.status === "ok" ? "refreshing" : "loading" }));
+    fetch("/api/man_metrolink")
+      .then((res) => res.json())
+      .then((data) => setMetrolink({ status: "ok", ...data }))
+      .catch(() => setMetrolink({ status: "error", message: "攞Metrolink資料失敗" }));
+  };
+
+  useEffect(() => {
+    fetchMetrolink();
+    const id = setInterval(fetchMetrolink, 60 * 1000);
+    return () => clearInterval(id);
   }, []);
 
   // 巴士站顯示屏：fetch 自己個 API route，每 60 秒自動refresh
@@ -223,78 +239,103 @@ export default function UK() {
           marginBottom: 16,
         }}
       >
-        <div style={{ fontWeight: 700, marginBottom: 10, fontSize: 14 }}>
-          Metrolink
-          <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.5, marginLeft: 8 }}>
-            示意畫面，未接駁真實data
-          </span>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 14 }}>Metrolink</div>
+          <button
+            onClick={fetchMetrolink}
+            style={{
+              fontSize: 11,
+              fontFamily: MONO,
+              color: "#1c2b2a",
+              background: "transparent",
+              border: "1px solid #1c2b2a",
+              borderRadius: 3,
+              padding: "3px 8px",
+              cursor: "pointer",
+            }}
+          >
+            {metrolink.status === "refreshing" ? "更新緊..." : "重新整理"}
+          </button>
         </div>
 
-        <div style={{ display: "grid", gap: 10 }}>
-          {[
-            {
-              station: "Altrincham",
-              subtitle: "→ 市中心",
-              trams: [
-                { dest: "Bury", platform: "P1", wait: 3 },
-                { dest: "Etihad Campus", platform: "P2", wait: 9 },
-                { dest: "Bury", platform: "P1", wait: 17 },
-              ],
-            },
-            {
-              station: "Deansgate",
-              subtitle: "→ Altrincham",
-              trams: [
-                { dest: "Altrincham", wait: 2 },
-                { dest: "Altrincham", wait: 14 },
-              ],
-            },
-          ].map((board) => (
-            <div
-              key={board.station}
-              style={{
-                background: "#0d1210",
-                borderRadius: 3,
-                padding: "10px 14px",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 18, color: "#eee7d8", fontWeight: 500 }}>
-                  {board.station}
-                </span>
-                <span style={{ fontSize: 11, color: "#7fb8a4", fontFamily: MONO }}>
-                  {board.subtitle}
-                </span>
-              </div>
-              {board.trams
-                .slice()
-                .sort((a, b) => a.wait - b.wait)
-                .map((t, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontFamily: MONO,
-                      color: "#e8b84b",
-                      fontSize: 15,
-                      padding: "2px 0",
-                    }}
-                  >
-                    <span>
-                      {t.dest}
-                      {t.platform && (
-                        <span style={{ fontSize: 11, color: "#7fb8a4", marginLeft: 6 }}>
-                          {t.platform}
-                        </span>
-                      )}
-                    </span>
-                    <span>{t.wait} 分鐘</span>
+        {metrolink.status === "loading" && (
+          <div style={{ fontFamily: MONO, fontSize: 13, color: "#1c2b2a", opacity: 0.7 }}>
+            讀緊班次...
+          </div>
+        )}
+        {metrolink.status === "error" && (
+          <div style={{ fontFamily: MONO, fontSize: 13, color: "#c96a54" }}>
+            {metrolink.message}
+          </div>
+        )}
+
+        {(metrolink.status === "ok" || metrolink.status === "refreshing") && (
+          <div style={{ display: "grid", gap: 10 }}>
+            {metrolink.boards?.map((board) => (
+              <div
+                key={board.id}
+                style={{
+                  background: "#0d1210",
+                  borderRadius: 3,
+                  padding: "10px 14px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 18, color: "#eee7d8", fontWeight: 500 }}>
+                    {board.label}
+                  </span>
+                  <span style={{ fontSize: 11, color: "#7fb8a4", fontFamily: MONO }}>
+                    {board.subtitle}
+                  </span>
+                </div>
+                {board.closed && (
+                  <div style={{ fontFamily: MONO, fontSize: 14, color: "#e8b84b" }}>
+                    咁夜，收咗車啦！
                   </div>
-                ))}
-            </div>
-          ))}
-        </div>
+                )}
+                {!board.closed &&
+                  board.trams.map((t, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontFamily: MONO,
+                        color: "#e8b84b",
+                        fontSize: 15,
+                        padding: "2px 0",
+                      }}
+                    >
+                      <span>{t.destination}</span>
+                      <span>
+                        {t.waitMinutes} 分鐘
+                        {!t.isRealtime && (
+                          <span style={{ fontSize: 10, color: "#7fb8a4", marginLeft: 5 }}>
+                            預定
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            ))}
+            {metrolink.updatedAt && (
+              <div style={{ fontSize: 10, color: "#1c2b2a", opacity: 0.5, fontFamily: MONO }}>
+                更新於{" "}
+                {new Date(metrolink.updatedAt).toLocaleTimeString("zh-Hant-HK", {
+                  hour12: false,
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 巴士站顯示屏 */}
