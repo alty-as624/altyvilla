@@ -15,6 +15,10 @@ function describeWeather(code) {
   return { text: "—", icon: "—" };
 }
 
+// 統一嘅monospace字體，確保Windows/Mac/Linux睇落都一致
+const MONO =
+  "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace";
+
 function congestionColor(level) {
   if (level === "暢通") return "#7fb8a4";
   if (level === "頗塞") return "#d9a441";
@@ -103,7 +107,7 @@ export default function UK() {
           marginBottom: 16,
         }}
       >
-        <div style={{ fontFamily: "monospace", fontSize: 14 }}>
+        <div style={{ fontFamily: MONO, fontSize: 14 }}>
           {now ? now.toLocaleString("zh-Hant-HK", { hour12: false }) : "—"}
         </div>
 
@@ -117,7 +121,7 @@ export default function UK() {
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 14 }}>
             <span style={{ fontSize: 30 }}>{w.icon}</span>
             <div>
-              <div style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 700 }}>
+              <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700 }}>
                 {Math.round(weather.current.temperature_2m)}°C
                 <span style={{ fontSize: 13, opacity: 0.7, marginLeft: 8, fontWeight: 400 }}>
                   {w.text}
@@ -164,11 +168,11 @@ export default function UK() {
               <div>
                 <div style={{ fontSize: 13 }}>{r.label}</div>
                 {r.error ? (
-                  <div style={{ fontSize: 11, opacity: 0.6, fontFamily: "monospace" }}>
+                  <div style={{ fontSize: 11, opacity: 0.6, fontFamily: MONO }}>
                     {r.error}
                   </div>
                 ) : (
-                  <div style={{ fontSize: 11, opacity: 0.6, fontFamily: "monospace" }}>
+                  <div style={{ fontSize: 11, opacity: 0.6, fontFamily: MONO }}>
                     {r.etaMinutes} 分鐘（正常 {r.normalMinutes} 分鐘）
                   </div>
                 )}
@@ -195,7 +199,7 @@ export default function UK() {
                   <div
                     style={{
                       fontSize: 12,
-                      fontFamily: "monospace",
+                      fontFamily: MONO,
                       color: congestionColor(r.congestionLevel),
                       fontWeight: 700,
                       width: 46,
@@ -228,52 +232,66 @@ export default function UK() {
 
         <div style={{ display: "grid", gap: 10 }}>
           {[
-            { title: "Altrincham → 市中心", trams: [
-              { dest: "Bury", wait: "3" },
-              { dest: "Piccadilly", wait: "9" },
-              { dest: "Bury", wait: "17" },
-            ] },
-            { title: "St Peter's Square → Altrincham", trams: [
-              { dest: "Altrincham", wait: "2" },
-              { dest: "Altrincham", wait: "14" },
-              { dest: "Altrincham", wait: "26" },
-            ] },
+            {
+              station: "Altrincham",
+              subtitle: "→ 市中心",
+              trams: [
+                { dest: "Bury", platform: "P1", wait: 3 },
+                { dest: "Etihad Campus", platform: "P2", wait: 9 },
+                { dest: "Bury", platform: "P1", wait: 17 },
+              ],
+            },
+            {
+              station: "Deansgate",
+              subtitle: "→ Altrincham",
+              trams: [
+                { dest: "Altrincham", wait: 2 },
+                { dest: "Altrincham", wait: 14 },
+              ],
+            },
           ].map((board) => (
             <div
-              key={board.title}
+              key={board.station}
               style={{
                 background: "#0d1210",
                 borderRadius: 3,
                 padding: "10px 14px",
               }}
             >
-              <div
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: 11,
-                  color: "#7fb8a4",
-                  marginBottom: 6,
-                  letterSpacing: 0.5,
-                }}
-              >
-                {board.title}
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 18, color: "#eee7d8", fontWeight: 500 }}>
+                  {board.station}
+                </span>
+                <span style={{ fontSize: 11, color: "#7fb8a4", fontFamily: MONO }}>
+                  {board.subtitle}
+                </span>
               </div>
-              {board.trams.map((t, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontFamily: "monospace",
-                    color: "#e8b84b",
-                    fontSize: 15,
-                    padding: "2px 0",
-                  }}
-                >
-                  <span>{t.dest}</span>
-                  <span>{t.wait} 分鐘</span>
-                </div>
-              ))}
+              {board.trams
+                .slice()
+                .sort((a, b) => a.wait - b.wait)
+                .map((t, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontFamily: MONO,
+                      color: "#e8b84b",
+                      fontSize: 15,
+                      padding: "2px 0",
+                    }}
+                  >
+                    <span>
+                      {t.dest}
+                      {t.platform && (
+                        <span style={{ fontSize: 11, color: "#7fb8a4", marginLeft: 6 }}>
+                          {t.platform}
+                        </span>
+                      )}
+                    </span>
+                    <span>{t.wait} 分鐘</span>
+                  </div>
+                ))}
             </div>
           ))}
         </div>
@@ -308,7 +326,7 @@ export default function UK() {
             onClick={fetchBus}
             style={{
               fontSize: 11,
-              fontFamily: "monospace",
+              fontFamily: MONO,
               color: "#1c2b2a",
               background: "transparent",
               border: "1px solid #1c2b2a",
@@ -323,17 +341,17 @@ export default function UK() {
 
         <div style={{ background: "#0d1210", borderRadius: 3, padding: "10px 14px" }}>
           {(bus.status === "loading") && (
-            <div style={{ fontFamily: "monospace", fontSize: 13, color: "#7fb8a4" }}>
+            <div style={{ fontFamily: MONO, fontSize: 13, color: "#7fb8a4" }}>
               讀緊班次...
             </div>
           )}
           {bus.status === "error" && (
-            <div style={{ fontFamily: "monospace", fontSize: 13, color: "#c96a54" }}>
+            <div style={{ fontFamily: MONO, fontSize: 13, color: "#c96a54" }}>
               {bus.message}
             </div>
           )}
           {(bus.status === "ok" || bus.status === "refreshing") && bus.closed && (
-            <div style={{ fontFamily: "monospace", fontSize: 14, color: "#e8b84b" }}>
+            <div style={{ fontFamily: MONO, fontSize: 14, color: "#e8b84b" }}>
               {bus.message}
             </div>
           )}
@@ -346,41 +364,57 @@ export default function UK() {
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  fontFamily: "monospace",
+                  fontFamily: MONO,
                   fontSize: 15,
                   padding: "3px 0",
                 }}
               >
-                <span style={{ color: "#e8b84b" }}>
+                <span
+                  style={{
+                    display: "inline-block",
+                    minWidth: 32,
+                    color: "#eee7d8",
+                    fontWeight: 700,
+                  }}
+                >
+                  {b.line}
+                </span>
+                <span style={{ display: "flex", alignItems: "baseline" }}>
                   <span
                     style={{
                       display: "inline-block",
-                      minWidth: 28,
-                      color: "#eee7d8",
-                      fontWeight: 700,
+                      width: 22,
+                      textAlign: "right",
+                      color: "#e8b84b",
                     }}
                   >
-                    {b.line}
-                  </span>{" "}
-                  {b.destination}
-                </span>
-                <span style={{ color: "#e8b84b" }}>
-                  {b.waitMinutes} 分鐘
-                  {!b.isRealtime && (
-                    <span style={{ fontSize: 10, color: "#7fb8a4", marginLeft: 5 }}>預定</span>
-                  )}
+                    {b.waitMinutes}
+                  </span>
+                  <span style={{ color: "#e8b84b", marginLeft: 4 }}>分鐘</span>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: 34,
+                      fontSize: 10,
+                      color: "#7fb8a4",
+                      marginLeft: 5,
+                      textAlign: "left",
+                    }}
+                  >
+                    {!b.isRealtime ? "預定" : ""}
+                  </span>
                 </span>
               </div>
             ))}
           {bus.updatedAt && (
-            <div style={{ fontSize: 10, color: "#7fb8a4", fontFamily: "monospace", marginTop: 8 }}>
+            <div style={{ fontSize: 10, color: "#7fb8a4", fontFamily: MONO, marginTop: 8 }}>
               更新於 {new Date(bus.updatedAt).toLocaleTimeString("zh-Hant-HK", { hour12: false })}
             </div>
           )}
         </div>
       </div>
 
-      <p style={{ fontFamily: "monospace", fontSize: 13, opacity: 0.6 }}>
+      <p style={{ fontFamily: MONO, fontSize: 13, opacity: 0.6 }}>
         之後會陸續加:油價 / 天氣警告 / 返工提示
       </p>
     </div>
