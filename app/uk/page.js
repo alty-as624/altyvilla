@@ -311,16 +311,20 @@ export default function UK() {
                         color: "#e8b84b",
                         fontSize: 15,
                         padding: "2px 0",
+                        gap: 10,
                       }}
                     >
-                      <span>{t.destination}</span>
-                      <span>
+                      <span
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {t.destination}
+                      </span>
+                      <span style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
                         {t.waitMinutes} 分鐘
-                        {!t.isRealtime && (
-                          <span style={{ fontSize: 10, color: "#7fb8a4", marginLeft: 5 }}>
-                            預定
-                          </span>
-                        )}
                       </span>
                     </div>
                   ))}
@@ -420,7 +424,7 @@ export default function UK() {
                 >
                   {b.line}
                 </span>
-                <span style={{ display: "flex", alignItems: "baseline" }}>
+                <span style={{ display: "flex", alignItems: "baseline", whiteSpace: "nowrap" }}>
                   <span
                     style={{
                       display: "inline-block",
