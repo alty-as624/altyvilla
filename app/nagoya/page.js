@@ -10,8 +10,6 @@ const OFFICIAL_STATUS = "https://www.kotsu.city.nagoya.jp/rp/emergency";
 const JMA_WARNING_PAGE =
   "https://www.jma.go.jp/bosai/warning/#area_type=offices&area_code=230000";
 const JMA_WARNING_JSON = `https://www.jma.go.jp/bosai/warning/data/r8/${AICHI_CODE}.json`;
-const JR_SHINKANSEN_STATUS =
-  "https://traininfo.jr-central.co.jp/shinkansen/pc/ja/index.html";
 const CSV_URL = "/data/shinkansen-ngy-kyo.csv";
 const STATION_BASE =
   "https://www.kotsu.city.nagoya.jp/rp/subway/station_top.html?name=";
@@ -90,7 +88,6 @@ function warnPriority(code) {
   return 1;
 }
 
-/** 新 API：/bosai/warning/data/r8/{code}.json（array，最新在前） */
 function parseWarnings(data) {
   const reports = Array.isArray(data) ? data : data ? [data] : [];
   const latest = reports[0] || {};
@@ -126,7 +123,6 @@ function parseWarnings(data) {
   }
   list.sort((a, b) => b.priority - a.priority || a.code.localeCompare(b.code));
 
-  // 全部已解除時唔用「解除」headline 嚇自己
   if (list.length === 0) {
     headline = "";
   }
@@ -671,12 +667,10 @@ export default function Nagoya() {
             新幹線（名古屋 ↔ 京都）· 最近五班
           </div>
           <a
-            href={JR_SHINKANSEN_STATUS}
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/nagoya/shinkansen"
             style={{ fontSize: 12, color: "#1c2b2a", fontWeight: 600 }}
           >
-            JR運行狀況
+            全日班次表
           </a>
         </div>
         <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 10 }}>
