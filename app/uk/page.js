@@ -37,6 +37,7 @@ export default function UK() {
   const [traffic, setTraffic] = useState({ status: "loading" });
   const [metrolink, setMetrolink] = useState({ status: "loading" });
   const [bus, setBus] = useState({ status: "loading" });
+  const [fuel, setFuel] = useState({ status: "loading" });
 
   useEffect(() => {
     const tick = () => setNow(new Date());
@@ -66,7 +67,7 @@ export default function UK() {
     );
   }, []);
 
-  // 路況：fetch 自己個 API route
+  // 路況
   useEffect(() => {
     fetch("/api/man_traffic")
       .then((res) => res.json())
@@ -77,7 +78,7 @@ export default function UK() {
       .catch(() => setTraffic({ status: "error", message: "攞路況資料失敗" }));
   }, []);
 
-  // Metrolink：fetch 自己個 API route，每 60 秒自動refresh
+  // Metrolink
   const fetchMetrolink = () => {
     setMetrolink((prev) => ({ ...prev, status: prev.status === "ok" ? "refreshing" : "loading" }));
     fetch("/api/man_metrolink")
@@ -92,7 +93,7 @@ export default function UK() {
     return () => clearInterval(id);
   }, []);
 
-  // 巴士站顯示屏：fetch 自己個 API route，每 60 秒自動refresh
+  // 巴士
   const fetchBus = () => {
     setBus((prev) => ({ ...prev, status: prev.status === "ok" ? "refreshing" : "loading" }));
     fetch("/api/man_bus")
@@ -107,7 +108,44 @@ export default function UK() {
     return () => clearInterval(id);
   }, []);
 
+  // 油價（經自己 API）
+  const fetchFuel = () => {
+    setFuel((prev) => ({ ...prev, status: prev.status === "ok" ? "refreshing" : "loading" }));
+    fetch("/api/uk_fuel")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.error) {
+          setFuel({ status: "error", message: data.error });
+        } else {
+          setFuel({
+            status: "ok",
+            stations: data.stations,
+            cheapest: data.cheapest,
+            updatedAt: data.updatedAt,
+          });
+        }
+      })
+      .catch(() => setFuel({ status: "error", message: "攞油價資料失敗" }));
+  };
+
+  useEffect(() => {
+    fetchFuel();
+  }, []);
+
   const w = weather.status === "ok" ? describeWeather(weather.current?.weather_code) : null;
+
+  // 統一 refresh 掣樣式（箭咀）
+  const refreshBtnStyle = {
+    fontSize: 14,
+    fontFamily: MONO,
+    color: "#1c2b2a",
+    background: "transparent",
+    border: "1px solid #1c2b2a",
+    borderRadius: 3,
+    padding: "2px 8px",
+    cursor: "pointer",
+    lineHeight: 1,
+  };
 
   return (
     <div>
@@ -230,7 +268,7 @@ export default function UK() {
           ))}
       </div>
 
-      {/* Metrolink 月台顯示屏 */}
+      {/* Metrolink */}
       <div
         style={{
           border: "1.5px solid #1c2b2a",
@@ -248,20 +286,8 @@ export default function UK() {
           }}
         >
           <div style={{ fontWeight: 700, fontSize: 14 }}>Metrolink</div>
-          <button
-            onClick={fetchMetrolink}
-            style={{
-              fontSize: 11,
-              fontFamily: MONO,
-              color: "#1c2b2a",
-              background: "transparent",
-              border: "1px solid #1c2b2a",
-              borderRadius: 3,
-              padding: "3px 8px",
-              cursor: "pointer",
-            }}
-          >
-            {metrolink.status === "refreshing" ? "更新緊..." : "重新整理"}
+          <button onClick={fetchMetrolink} style={refreshBtnStyle} title="重新整理">
+            {metrolink.status === "refreshing" ? "…" : "↻"}
           </button>
         </div>
 
@@ -342,7 +368,7 @@ export default function UK() {
         )}
       </div>
 
-      {/* 巴士站顯示屏 */}
+      {/* 巴士 */}
       <div
         style={{
           border: "1.5px solid #1c2b2a",
@@ -367,25 +393,13 @@ export default function UK() {
               </span>
             )}
           </div>
-          <button
-            onClick={fetchBus}
-            style={{
-              fontSize: 11,
-              fontFamily: MONO,
-              color: "#1c2b2a",
-              background: "transparent",
-              border: "1px solid #1c2b2a",
-              borderRadius: 3,
-              padding: "3px 8px",
-              cursor: "pointer",
-            }}
-          >
-            {bus.status === "refreshing" ? "更新緊..." : "重新整理"}
+          <button onClick={fetchBus} style={refreshBtnStyle} title="重新整理">
+            {bus.status === "refreshing" ? "…" : "↻"}
           </button>
         </div>
 
         <div style={{ background: "#0d1210", borderRadius: 3, padding: "10px 14px" }}>
-          {(bus.status === "loading") && (
+          {bus.status === "loading" && (
             <div style={{ fontFamily: MONO, fontSize: 13, color: "#7fb8a4" }}>
               讀緊班次...
             </div>
@@ -459,8 +473,119 @@ export default function UK() {
         </div>
       </div>
 
+      {/* 油價 */}
+      <div
+        style={{
+          border: "1.5px solid #1c2b2a",
+          borderRadius: 4,
+          padding: "14px 18px",
+          marginBottom: 16,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 14 }}>油價</div>
+          <button onClick={fetchFuel} style={refreshBtnStyle} title="重新整理">
+            {fuel.status === "refreshing" ? "…" : "↻"}
+          </button>
+        </div>
+
+        {fuel.status === "loading" && (
+          <div style={{ fontSize: 13, opacity: 0.7, fontFamily: MONO }}>讀緊油價...</div>
+        )}
+        {fuel.status === "error" && (
+          <div style={{ fontSize: 13, color: "#c96a54", fontFamily: MONO }}>{fuel.message}</div>
+        )}
+
+        {(fuel.status === "ok" || fuel.status === "refreshing") && (
+          <div>
+            {fuel.stations.map((s, i) => (
+              <div
+                key={s.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  padding: "7px 0",
+                  borderTop: i === 0 ? "none" : "1px solid rgba(28,43,42,0.15)",
+                }}
+              >
+                {/* 左邊：站名 + 最平標記 */}
+                <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
+                  {fuel.cheapest != null && s.e10 === fuel.cheapest && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "#7fb8a4",
+                        fontWeight: 600,
+                        flexShrink: 0,
+                      }}
+                    >
+                      平
+                    </span>
+                  )}
+                  <span style={{ fontSize: 13 }}>{s.label}</span>
+                </div>
+
+                {/* 右邊：價錢（固定右對齊） */}
+                <div
+                  style={{
+                    textAlign: "right",
+                    flexShrink: 0,
+                    marginLeft: 12,
+                    fontFamily: MONO,
+                  }}
+                >
+                  {s.error ? (
+                    <span style={{ fontSize: 13, color: "#c96a54" }}>{s.error}</span>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: "#1c2b2a" }}>
+                        {s.e10 != null ? `${s.e10.toFixed(1)}p` : "—"}
+                      </div>
+                      {s.diesel != null && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "#1c2b2a",
+                            opacity: 0.55,
+                            marginTop: 1,
+                          }}
+                        >
+                          柴油 {s.diesel.toFixed(1)}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+            {fuel.updatedAt && (
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "#1c2b2a",
+                  opacity: 0.5,
+                  fontFamily: MONO,
+                  marginTop: 10,
+                }}
+              >
+                更新於{" "}
+                {new Date(fuel.updatedAt).toLocaleTimeString("zh-Hant-HK", { hour12: false })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <p style={{ fontFamily: MONO, fontSize: 13, opacity: 0.6 }}>
-        之後會陸續加:油價 / 天氣警告 / 返工提示
+        之後會陸續加:天氣警告 / 返工提示
       </p>
     </div>
   );
