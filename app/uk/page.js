@@ -19,6 +19,22 @@ function describeWeather(code) {
 const MONO =
   "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace";
 
+// 油站座標（撳站名開 Google Maps 導航）
+const FUEL_COORDS = {
+  "costco-trafford": { lat: 53.46801, lon: -2.34316 },
+  "costco-haydock": { lat: 53.47463, lon: -2.66282 },
+  "costco-oldham": { lat: 53.52915, lon: -2.15822 },
+  "asda-altrincham": { lat: 53.3976395, lon: -2.3649553 },
+  "asda-trafford": { lat: 53.46717, lon: -2.344282 },
+  "morrisons-denton": { lat: 53.455848, lon: -2.1126 },
+};
+
+function fuelMapsUrl(id) {
+  const c = FUEL_COORDS[id];
+  if (!c) return null;
+  return `https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lon}`;
+}
+
 function congestionColor(level) {
   if (level === "暢通") return "#7fb8a4";
   if (level === "頗塞") return "#d9a441";
@@ -439,8 +455,26 @@ export default function UK() {
                   borderTop: i === 0 ? "none" : "1px solid rgba(28,43,42,0.15)",
                 }}
               >
-                {/* 左邊：站名 */}
-                <span style={{ fontSize: 13, minWidth: 0 }}>{s.label}</span>
+                {/* 左邊：站名（可撳開導航） */}
+                {fuelMapsUrl(s.id) ? (
+                  <a
+                    href={fuelMapsUrl(s.id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontSize: 13,
+                      minWidth: 0,
+                      color: "inherit",
+                      textDecoration: "none",
+                      borderBottom: "1px dotted rgba(28,43,42,0.35)",
+                    }}
+                    title="開 Google Maps 導航"
+                  >
+                    {s.label}
+                  </a>
+                ) : (
+                  <span style={{ fontSize: 13, minWidth: 0 }}>{s.label}</span>
+                )}
 
                 {/* 右邊：平 + 價錢（右對齊） */}
                 <div
