@@ -35,6 +35,7 @@ export default function UK() {
   const [now, setNow] = useState(null);
   const [weather, setWeather] = useState({ status: "loading" });
   const [traffic, setTraffic] = useState({ status: "loading" });
+  const [trafficData, setTrafficData] = useState({ status: "loading" });
   const [metrolink, setMetrolink] = useState({ status: "loading" });
   const [bus, setBus] = useState({ status: "loading" });
   const [fuel, setFuel] = useState({ status: "loading" });
@@ -67,7 +68,7 @@ export default function UK() {
     );
   }, []);
 
-  // 路況
+  // 路況（固定路線 ETA）
   useEffect(() => {
     fetch("/api/man_traffic")
       .then((res) => res.json())
@@ -76,6 +77,32 @@ export default function UK() {
         else setTraffic({ status: "ok", routes: data.routes });
       })
       .catch(() => setTraffic({ status: "error", message: "攞路況資料失敗" }));
+  }, []);
+
+  // Traffic Data（探針位，固定次序）
+  const fetchTrafficData = () => {
+    setTrafficData((prev) => ({
+      ...prev,
+      status: prev.status === "ok" ? "refreshing" : "loading",
+    }));
+    fetch("/api/man_traffic_data")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.error) {
+          setTrafficData({ status: "error", message: data.error });
+        } else {
+          setTrafficData({
+            status: "ok",
+            points: data.points,
+            updatedAt: data.updatedAt,
+          });
+        }
+      })
+      .catch(() => setTrafficData({ status: "error", message: "攞 Traffic Data 失敗" }));
+  };
+
+  useEffect(() => {
+    fetchTrafficData();
   }, []);
 
   // Metrolink
@@ -266,6 +293,97 @@ export default function UK() {
               )}
             </div>
           ))}
+      </div>
+
+      {/* Traffic Data — 探針位，固定次序 */}
+      <div
+        style={{
+          border: "1.5px solid #1c2b2a",
+          borderRadius: 4,
+          padding: "14px 18px",
+          marginBottom: 16,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 14 }}>Traffic Data</div>
+          <button onClick={fetchTrafficData} style={refreshBtnStyle} title="重新整理">
+            {trafficData.status === "refreshing" ? "…" : "↻"}
+          </button>
+        </div>
+
+        {trafficData.status === "loading" && (
+          <div style={{ fontSize: 13, opacity: 0.7, fontFamily: MONO }}>讀緊...</div>
+        )}
+        {trafficData.status === "error" && (
+          <div style={{ fontSize: 13, color: "#c96a54", fontFamily: MONO }}>
+            {trafficData.message}
+          </div>
+        )}
+
+        {(trafficData.status === "ok" || trafficData.status === "refreshing") &&
+          trafficData.points?.map((p, i) => (
+            <div
+              key={p.id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "6px 0",
+                borderTop: i === 0 ? "none" : "1px solid rgba(28,43,42,0.15)",
+                fontSize: 13,
+                fontFamily: MONO,
+              }}
+            >
+              <span>{p.label}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span
+                  style={{
+                    color: p.color || "#999",
+                    lineHeight: 1,
+                    fontSize: 13,
+                  }}
+                >
+                  ●
+                </span>
+                <span
+                  style={{
+                    minWidth: 36,
+                    color: p.color || "#1c2b2a",
+                    fontWeight: 600,
+                  }}
+                >
+                  {p.status}
+                </span>
+                <span style={{ minWidth: 52, textAlign: "right" }}>
+                  {p.currentSpeed != null ? `${p.currentSpeed} mph` : "—"}
+                </span>
+              </div>
+            </div>
+          ))}
+
+        {trafficData.updatedAt && (
+          <div
+            style={{
+              fontSize: 10,
+              color: "#1c2b2a",
+              opacity: 0.5,
+              fontFamily: MONO,
+              marginTop: 10,
+            }}
+          >
+            更新於{" "}
+            {new Date(trafficData.updatedAt).toLocaleTimeString("zh-Hant-HK", {
+              hour12: false,
+            })}
+          </div>
+        )}
       </div>
 
       {/* Metrolink */}
@@ -516,24 +634,10 @@ export default function UK() {
                   borderTop: i === 0 ? "none" : "1px solid rgba(28,43,42,0.15)",
                 }}
               >
-                {/* 左邊：站名 + 最平標記 */}
-                <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
-                  {fuel.cheapest != null && s.e10 === fuel.cheapest && (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: "#7fb8a4",
-                        fontWeight: 600,
-                        flexShrink: 0,
-                      }}
-                    >
-                      平
-                    </span>
-                  )}
-                  <span style={{ fontSize: 13 }}>{s.label}</span>
-                </div>
+                {/* 左邊：站名 */}
+                <span style={{ fontSize: 13, minWidth: 0 }}>{s.label}</span>
 
-                {/* 右邊：價錢（固定右對齊） */}
+                {/* 右邊：平 + 價錢（右對齊） */}
                 <div
                   style={{
                     textAlign: "right",
@@ -546,8 +650,29 @@ export default function UK() {
                     <span style={{ fontSize: 13, color: "#c96a54" }}>{s.error}</span>
                   ) : (
                     <>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: "#1c2b2a" }}>
-                        {s.e10 != null ? `${s.e10.toFixed(1)}p` : "—"}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "baseline",
+                          justifyContent: "flex-end",
+                          gap: 6,
+                        }}
+                      >
+                        {fuel.cheapest != null && s.e10 === fuel.cheapest && (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: "#7fb8a4",
+                              fontWeight: 600,
+                              flexShrink: 0,
+                            }}
+                          >
+                            平
+                          </span>
+                        )}
+                        <span style={{ fontSize: 15, fontWeight: 600, color: "#1c2b2a" }}>
+                          {s.e10 != null ? `${s.e10.toFixed(1)}p` : "—"}
+                        </span>
                       </div>
                       {s.diesel != null && (
                         <div
