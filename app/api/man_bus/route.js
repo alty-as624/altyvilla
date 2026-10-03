@@ -4,10 +4,11 @@
 
 const STOP_CODE = "1800SB04971";
 // 想顯示嘅站名，bustimes 個 times.json 冇提供站名，自己填返
-const STOP_NAME = "站名待填"; // TODO: 填返你屋企附近嗰個站嘅實際名
+const STOP_NAME = "Major Street (Stop SL)";
 
 const ALLOWED_LINES = ["41", "42", "43", "111", "142", "143"];
 const MAX_RESULTS = 5;
+const MAX_WAIT_MINUTES = 90; // 超過呢個就當「而家冇車」，唔好撈埋聽朝頭班車
 
 async function fetchTimes(limit) {
   const url = `https://bustimes.org/stops/${STOP_CODE}/times.json?limit=${limit}`;
@@ -37,7 +38,21 @@ export async function GET() {
     if (filtered.length >= MAX_RESULTS) break;
   }
 
-  if (filtered.length === 0) {
+  const buses = filtered
+    .map((t) => {
+      const effectiveTime = new Date(pickTime(t));
+      const waitMinutes = Math.round((effectiveTime - now) / 60000);
+      return {
+        line: t.service.line_name,
+        destination: t.destination?.name || "",
+        waitMinutes,
+        isRealtime: Boolean(t.expected_departure_time),
+      };
+    })
+    .filter((b) => b.waitMinutes >= 0 && b.waitMinutes <= MAX_WAIT_MINUTES)
+    .slice(0, MAX_RESULTS);
+
+  if (buses.length === 0) {
     return Response.json({
       stopName: STOP_NAME,
       updatedAt: now.toISOString(),
@@ -46,17 +61,6 @@ export async function GET() {
       buses: [],
     });
   }
-
-  const buses = filtered.slice(0, MAX_RESULTS).map((t) => {
-    const effectiveTime = new Date(pickTime(t));
-    const waitMinutes = Math.max(0, Math.round((effectiveTime - now) / 60000));
-    return {
-      line: t.service.line_name,
-      destination: t.destination?.name || "",
-      waitMinutes,
-      isRealtime: Boolean(t.expected_departure_time),
-    };
-  });
 
   return Response.json({
     stopName: STOP_NAME,
