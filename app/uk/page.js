@@ -336,7 +336,15 @@ export default function UK() {
                 justifyContent: "space-between",
                 alignItems: "center",
                 padding: "6px 0",
-                borderTop: i === 0 ? "none" : "1px solid rgba(28,43,42,0.15)",
+                // i===3：第4行前，返工／放工分隔（雙線）
+                borderTop:
+                  i === 0
+                    ? "none"
+                    : i === 3
+                      ? "3px double rgba(28,43,42,0.45)"
+                      : "1px solid rgba(28,43,42,0.15)",
+                marginTop: i === 3 ? 6 : 0,
+                paddingTop: i === 3 ? 10 : 6,
                 fontSize: 13,
                 fontFamily: MONO,
               }}
@@ -345,13 +353,15 @@ export default function UK() {
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span
                   style={{
-                    color: p.color || "#999",
-                    lineHeight: 1,
-                    fontSize: 13,
+                    display: "inline-block",
+                    width: 10,
+                    height: 10,
+                    borderRadius: 2,
+                    background: p.color || "#999",
+                    flexShrink: 0,
                   }}
-                >
-                  ●
-                </span>
+                  title={p.status}
+                />
                 <span
                   style={{
                     minWidth: 36,
@@ -382,6 +392,124 @@ export default function UK() {
             {new Date(trafficData.updatedAt).toLocaleTimeString("zh-Hant-HK", {
               hour12: false,
             })}
+          </div>
+        )}
+      </div>
+
+      {/* 油價 */}
+      <div
+        style={{
+          border: "1.5px solid #1c2b2a",
+          borderRadius: 4,
+          padding: "14px 18px",
+          marginBottom: 16,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 14 }}>油價</div>
+          <button onClick={fetchFuel} style={refreshBtnStyle} title="重新整理">
+            {fuel.status === "refreshing" ? "…" : "↻"}
+          </button>
+        </div>
+
+        {fuel.status === "loading" && (
+          <div style={{ fontSize: 13, opacity: 0.7, fontFamily: MONO }}>讀緊油價...</div>
+        )}
+        {fuel.status === "error" && (
+          <div style={{ fontSize: 13, color: "#c96a54", fontFamily: MONO }}>{fuel.message}</div>
+        )}
+
+        {(fuel.status === "ok" || fuel.status === "refreshing") && (
+          <div>
+            {fuel.stations.map((s, i) => (
+              <div
+                key={s.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  padding: "7px 0",
+                  borderTop: i === 0 ? "none" : "1px solid rgba(28,43,42,0.15)",
+                }}
+              >
+                {/* 左邊：站名 */}
+                <span style={{ fontSize: 13, minWidth: 0 }}>{s.label}</span>
+
+                {/* 右邊：平 + 價錢（右對齊） */}
+                <div
+                  style={{
+                    textAlign: "right",
+                    flexShrink: 0,
+                    marginLeft: 12,
+                    fontFamily: MONO,
+                  }}
+                >
+                  {s.error ? (
+                    <span style={{ fontSize: 13, color: "#c96a54" }}>{s.error}</span>
+                  ) : (
+                    <>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "baseline",
+                          justifyContent: "flex-end",
+                          gap: 6,
+                        }}
+                      >
+                        {fuel.cheapest != null && s.e10 === fuel.cheapest && (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: "#7fb8a4",
+                              fontWeight: 600,
+                              flexShrink: 0,
+                            }}
+                          >
+                            平
+                          </span>
+                        )}
+                        <span style={{ fontSize: 15, fontWeight: 600, color: "#1c2b2a" }}>
+                          {s.e10 != null ? `${s.e10.toFixed(1)}p` : "—"}
+                        </span>
+                      </div>
+                      {s.diesel != null && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "#1c2b2a",
+                            opacity: 0.55,
+                            marginTop: 1,
+                          }}
+                        >
+                          柴油 {s.diesel.toFixed(1)}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+            {fuel.updatedAt && (
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "#1c2b2a",
+                  opacity: 0.5,
+                  fontFamily: MONO,
+                  marginTop: 10,
+                }}
+              >
+                更新於{" "}
+                {new Date(fuel.updatedAt).toLocaleTimeString("zh-Hant-HK", { hour12: false })}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -589,124 +717,6 @@ export default function UK() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* 油價 */}
-      <div
-        style={{
-          border: "1.5px solid #1c2b2a",
-          borderRadius: 4,
-          padding: "14px 18px",
-          marginBottom: 16,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 10,
-          }}
-        >
-          <div style={{ fontWeight: 700, fontSize: 14 }}>油價</div>
-          <button onClick={fetchFuel} style={refreshBtnStyle} title="重新整理">
-            {fuel.status === "refreshing" ? "…" : "↻"}
-          </button>
-        </div>
-
-        {fuel.status === "loading" && (
-          <div style={{ fontSize: 13, opacity: 0.7, fontFamily: MONO }}>讀緊油價...</div>
-        )}
-        {fuel.status === "error" && (
-          <div style={{ fontSize: 13, color: "#c96a54", fontFamily: MONO }}>{fuel.message}</div>
-        )}
-
-        {(fuel.status === "ok" || fuel.status === "refreshing") && (
-          <div>
-            {fuel.stations.map((s, i) => (
-              <div
-                key={s.id}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  padding: "7px 0",
-                  borderTop: i === 0 ? "none" : "1px solid rgba(28,43,42,0.15)",
-                }}
-              >
-                {/* 左邊：站名 */}
-                <span style={{ fontSize: 13, minWidth: 0 }}>{s.label}</span>
-
-                {/* 右邊：平 + 價錢（右對齊） */}
-                <div
-                  style={{
-                    textAlign: "right",
-                    flexShrink: 0,
-                    marginLeft: 12,
-                    fontFamily: MONO,
-                  }}
-                >
-                  {s.error ? (
-                    <span style={{ fontSize: 13, color: "#c96a54" }}>{s.error}</span>
-                  ) : (
-                    <>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "baseline",
-                          justifyContent: "flex-end",
-                          gap: 6,
-                        }}
-                      >
-                        {fuel.cheapest != null && s.e10 === fuel.cheapest && (
-                          <span
-                            style={{
-                              fontSize: 11,
-                              color: "#7fb8a4",
-                              fontWeight: 600,
-                              flexShrink: 0,
-                            }}
-                          >
-                            平
-                          </span>
-                        )}
-                        <span style={{ fontSize: 15, fontWeight: 600, color: "#1c2b2a" }}>
-                          {s.e10 != null ? `${s.e10.toFixed(1)}p` : "—"}
-                        </span>
-                      </div>
-                      {s.diesel != null && (
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "#1c2b2a",
-                            opacity: 0.55,
-                            marginTop: 1,
-                          }}
-                        >
-                          柴油 {s.diesel.toFixed(1)}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
-            {fuel.updatedAt && (
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "#1c2b2a",
-                  opacity: 0.5,
-                  fontFamily: MONO,
-                  marginTop: 10,
-                }}
-              >
-                更新於{" "}
-                {new Date(fuel.updatedAt).toLocaleTimeString("zh-Hant-HK", { hour12: false })}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       <p style={{ fontFamily: MONO, fontSize: 13, opacity: 0.6 }}>
